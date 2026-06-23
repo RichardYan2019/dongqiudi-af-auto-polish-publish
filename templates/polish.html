@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AF Polish & Publish</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; min-height: 100vh; }
+.container { max-width: 1600px; margin: 0 auto; padding: 20px; }
+h1 { text-align: center; color: #00d4ff; font-size: 1.4rem; margin-bottom: 20px; }
+h2 { font-size: 1rem; color: #00d4ff; margin-bottom: 12px; }
+.layout { display: grid; grid-template-columns: 320px 1fr; gap: 16px; }
+.draft-panel { background: #0f3460; border-radius: 10px; padding: 16px; }
+.draft-controls { display: flex; gap: 8px; margin-bottom: 10px; }
+.btn-refresh, .btn-selall { flex: 1; padding: 7px; background: #16213e; border: 1px solid #333; border-radius: 6px; color: #aaa; cursor: pointer; font-size: 0.82rem; }
+.btn-refresh:hover, .btn-selall:hover { border-color: #00d4ff; color: #00d4ff; }
+.draft-list { max-height: calc(100vh - 180px); overflow-y: auto; }
+.draft-item { padding: 9px 10px; border-radius: 6px; border-bottom: 1px solid #16213e; display: flex; align-items: flex-start; gap: 8px; cursor: pointer; }
+.draft-item:hover { background: #16213e; }
+.draft-item input[type=checkbox] { margin-top: 3px; flex-shrink: 0; accent-color: #00d4ff; width: 15px; height: 15px; }
+.draft-item .d-title { font-size: 0.85rem; line-height: 1.4; }
+.draft-item .d-meta { font-size: 0.72rem; color: #888; }
+.action-bar { background: #0f3460; border-radius: 10px; padding: 14px 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sel-count { flex: 1; font-size: 0.9rem; color: #aaa; }
+.sel-count b { color: #00d4ff; }
+.btn { padding: 9px 20px; border: none; border-radius: 6px; cursor: pointer; font-size: 0.88rem; font-weight: bold; transition: all 0.2s; }
+.btn-primary { background: #00d4ff; color: #000; }
+.btn-primary:hover { background: #00b8e6; }
+.btn-primary:disabled { background: #555; color: #999; cursor: not-allowed; }
+.btn-success { background: #4caf50; color: #fff; }
+.btn-success:hover { background: #43a047; }
+.btn-success:disabled { background: #555; color: #999; cursor: not-allowed; }
+.btn-sm { padding: 6px 14px; font-size: 0.82rem; }
+.cards { display: flex; flex-direction: column; gap: 14px; }
+.card { background: #0f3460; border-radius: 10px; padding: 16px; }
+.card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.card-title { flex: 1; font-size: 0.9rem; color: #ccc; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge { font-size: 0.75rem; padding: 2px 10px; border-radius: 12px; font-weight: bold; flex-shrink: 0; }
+.badge-running { background: #1565c0; color: #90caf9; }
+.badge-done    { background: #1b5e20; color: #a5d6a7; }
+.badge-error   { background: #b71c1c; color: #ef9a9a; }
+.badge-published { background: #4a148c; color: #ce93d8; }
+.log-box { background: #0a0a1a; border-radius: 6px; padding: 8px 12px; height: 80px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 0.78rem; line-height: 1.6; margin-bottom: 10px; }
+.log-line { color: #aaa; }
+.log-line.done { color: #4caf50; }
+.log-line.error { color: #f44336; }
+.compare { display: none; gap: 14px; }
+.compare.visible { display: grid; grid-template-columns: 1fr 1fr; }
+.compare-col { display: flex; flex-direction: column; gap: 8px; }
+.compare-col h3 { font-size: 0.82rem; }
+.compare-col h3.original { color: #ff9800; }
+.compare-col h3.polished { color: #4caf50; }
+.field-label { font-size: 0.75rem; color: #666; margin-bottom: 3px; }
+.original-text { background: #0a0a1a; border-radius: 6px; padding: 8px 10px; font-size: 0.82rem; line-height: 1.5; white-space: pre-wrap; max-height: 200px; overflow-y: auto; color: #ccc; }
+input.edit-title { width: 100%; background: #16213e; border: 1px solid #333; border-radius: 6px; padding: 7px 10px; color: #eee; font-size: 0.85rem; }
+input.edit-title:focus { outline: none; border-color: #00d4ff; }
+textarea.edit-body { width: 100%; background: #16213e; border: 1px solid #333; border-radius: 6px; padding: 8px 10px; color: #eee; font-size: 0.82rem; line-height: 1.5; resize: vertical; min-height: 180px; }
+textarea.edit-body:focus { outline: none; border-color: #00d4ff; }
+.meta-tags { font-size: 0.77rem; color: #888; }
+.meta-tags span { background: #16213e; padding: 2px 7px; border-radius: 4px; margin-right: 4px; display: inline-block; margin-bottom: 3px; }
+.card-actions { display: flex; gap: 8px; margin-top: 10px; }
+.result-msg { padding: 7px 12px; border-radius: 6px; font-size: 0.85rem; display: none; margin-top: 8px; }
+.result-msg.success { background: #1b5e20; color: #a5d6a7; display: block; }
+.result-msg.error-msg { background: #b71c1c; color: #ef9a9a; display: block; }
+.tab-btn { padding: 8px 20px; border: none; border-radius: 8px 8px 0 0; cursor: pointer; font-size: 0.9rem; background: #16213e; color: #aaa; }
+.tab-btn.active { background: #0f3460; color: #00d4ff; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>AF Polish & Publish</h1>
+
+<div style="display:flex;gap:4px;margin-bottom:0;">
+  <button class="tab-btn active" id="btn-publish" onclick="switchTab('publish')">Polish & Publish</button>
+  <button class="tab-btn" id="btn-ai" onclick="switchTab('ai')">AI 文本处理</button>
+  <button class="tab-btn" id="btn-top" onclick="switchTab('top')">置顶池管理</button>
+</div>
+
+<!-- Tab: Polish & Publish -->
+<div id="tab-publish" style="background:#0f3460;border-radius:0 8px 8px 8px;padding:16px;">
+<div class="layout">
+  <div class="draft-panel">
+    <h2>草稿列表</h2>
+    <div class="draft-controls">
+      <button class="btn-refresh" onclick="loadDrafts()">刷新</button>
+      <button class="btn-selall" onclick="toggleAll()">全选/取消</button>
+    </div>
+    <div class="draft-list" id="draft-list"><div style="color:#666;font-size:.85rem">加载中...</div></div>
+  </div>
+  <div style="display:flex;flex-direction:column;gap:14px;">
+    <div class="action-bar">
+      <div class="sel-count" id="sel-count">请从左侧勾选草稿</div>
+      <button class="btn btn-primary" id="polish-btn" disabled onclick="startBatchPolish()">批量 Polish</button>
+      <button class="btn btn-success" id="pub-all-btn" disabled onclick="publishAll()">发布全部已完成</button>
+    </div>
+    <div class="cards" id="cards"></div>
+  </div>
+</div>
+</div>
+
+<!-- Tab: AI 文本处理 -->
+<div id="tab-ai" style="display:none;background:#0f3460;border-radius:0 8px 8px 8px;padding:24px;">
+  <div style="display:flex;flex-direction:column;gap:14px;max-width:900px;margin:0 auto;">
+    <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+      <select id="ai-provider" style="background:#16213e;border:1px solid #333;border-radius:6px;padding:7px 10px;color:#eee;">
+        <option value="gemini">Gemini</option>
+        <option value="gpt">GPT (OpenAI)</option>
+      </select>
+      <input id="ai-key" type="text" placeholder="输入 API Key" style="flex:1;background:#16213e;border:1px solid #333;border-radius:6px;padding:7px 10px;color:#eee;">
+      <select id="ai-lang" style="background:#16213e;border:1px solid #333;border-radius:6px;padding:7px 10px;color:#eee;">
+        <option value="Vietnamese">越南语</option>
+        <option value="English">英语</option>
+        <option value="Chinese">中文</option>
+        <option value="Indonesian">印尼语</option>
+      </select>
+    </div>
+    <textarea id="ai-input" rows="8" placeholder="在此粘贴需要处理的文本..." style="background:#16213e;border:1px solid #333;border-radius:6px;padding:10px;color:#eee;font-size:0.9rem;resize:vertical;"></textarea>
+    <div style="display:flex;gap:8px;">
+      <button onclick="callAI('translate')" class="btn btn-primary">翻译</button>
+      <button onclick="callAI('rewrite')" class="btn btn-primary">改写</button>
+      <button onclick="callAI('polish')" class="btn btn-primary">润色</button>
+    </div>
+    <div id="ai-result" style="background:#0a0a1a;border-radius:6px;padding:12px;min-height:80px;color:#ccc;white-space:pre-wrap;font-size:0.88rem;">结果将显示在这里...</div>
+  </div>
+</div>
+
+<!-- Tab: 置顶池管理 -->
+<div id="tab-top" style="display:none;background:#0f3460;border-radius:0 8px 8px 8px;padding:20px;">
+  <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap;">
+    <button onclick="loadTopPool()" class="btn btn-primary">刷新列表</button>
+    <button onclick="runAutoRemove()" style="padding:9px 20px;border:none;border-radius:6px;cursor:pointer;font-size:0.88rem;font-weight:bold;background:#f44336;color:#fff;">自动下架过期文章</button>
+    <span id="top-stat" style="font-size:0.82rem;color:#aaa;"></span>
+  </div>
+  <div id="top-list" style="display:flex;flex-direction:column;gap:8px;max-height:600px;overflow-y:auto;"></div>
+  <div id="top-result" style="margin-top:12px;font-size:0.82rem;color:#4caf50;"></div>
+</div>
+
+</div><!-- /container -->
+
+<script>
+// ── Tab 切换 ──
+function switchTab(name) {
+  ['publish','ai','top'].forEach(t => {
+    document.getElementById('tab-' + t).style.display = t === name ? '' : 'none';
+    document.getElementById('btn-' + t).className = 'tab-btn' + (t === name ? ' active' : '');
+  });
+  if (name === 'top') loadTopPool();
+}
+
+function toggleEdit(id) {
+  const preview = document.getElementById('preview-' + id);
+  const textarea = document.getElementById('eb-' + id);
+  const btn = document.getElementById('edit-toggle-' + id);
+  if (textarea.style.display === 'none') {
+    textarea.style.display = '';
+    preview.style.display = 'none';
+    btn.textContent = '查看预览';
+  } else {
+    // 把编辑后的 HTML 同步回预览
+    preview.innerHTML = textarea.value;
+    textarea.style.display = 'none';
+    preview.style.display = '';
+    btn.textContent = '编辑 HTML';
+  }
+}
+
+// ── Polish & Publish ──
+const selected = new Set();
+const articles = {};
+
+function loadDrafts() {
+  document.getElementById('draft-list').innerHTML = '<div style="color:#666;font-size:.85rem">加载中...</div>';
+  fetch('/api/drafts').then(r => r.json()).then(drafts => {
+    if (drafts.error) { document.getElementById('draft-list').innerHTML = `<div style="color:#f44">${drafts.error}</div>`; return; }
+    const list = document.getElementById('draft-list');
+    list.innerHTML = '';
+    drafts.forEach(d => {
+      const el = document.createElement('div');
+      el.className = 'draft-item';
+      el.innerHTML = `<input type="checkbox" id="cb-${d.id}" value="${d.id}" onchange="onCheck('${d.id}', this.checked)">
+        <div><div class="d-title">${d.title.substring(0, 65)}</div>
+        <div class="d-meta">${d.id} · ${d.time ? d.time.substring(0,16) : ''}</div></div>`;
+      el.onclick = e => { if (e.target.tagName !== 'INPUT') { const cb = el.querySelector('input'); cb.checked = !cb.checked; onCheck(d.id, cb.checked); } };
+      articles[d.id] = { title: d.title };
+      list.appendChild(el);
+    });
+  });
+}
+
+function onCheck(id, checked) {
+  if (checked) selected.add(id); else selected.delete(id);
+  updateSelCount();
+}
+
+function updateSelCount() {
+  const n = selected.size;
+  document.getElementById('sel-count').innerHTML = n ? `已选 <b>${n}</b> 篇` : '请从左侧勾选草稿';
+  document.getElementById('polish-btn').disabled = n === 0;
+}
+
+function toggleAll() {
+  const cbs = document.querySelectorAll('#draft-list input[type=checkbox]');
+  const allChecked = [...cbs].every(c => c.checked);
+  cbs.forEach(c => { c.checked = !allChecked; onCheck(c.value, !allChecked); });
+}
+
+function startBatchPolish() {
+  const ids = [...selected];
+  if (!ids.length) return;
+  document.getElementById('polish-btn').disabled = true;
+  document.getElementById('pub-all-btn').disabled = true;
+  // 重置选择
+  selected.clear();
+  document.querySelectorAll('#draft-list input[type=checkbox]').forEach(c => c.checked = false);
+  updateSelCount();
+  ids.forEach(id => {
+    createCard(id);
+    fetch('/api/polish', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({article_id: id}) })
+      .then(() => listenLogs(id));
+  });
+}
+
+function createCard(id) {
+  const title = articles[id]?.title || id;
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.id = 'card-' + id;
+  div.innerHTML = `<div class="card-header">
+    <div class="card-title" title="${title}">[${id}] ${title.substring(0,70)}</div>
+    <span class="badge badge-running" id="badge-${id}">处理中</span>
+  </div>
+  <div class="log-box" id="log-${id}"></div>
+  <div class="compare" id="cmp-${id}">
+    <div class="compare-col">
+      <h3 class="original">原文</h3>
+      <div><div class="field-label">标题</div><div class="original-text" id="ot-${id}"></div></div>
+      <div><div class="field-label">正文</div><div class="original-text" id="ob-${id}"></div></div>
+    </div>
+    <div class="compare-col">
+      <h3 class="polished">Polish 结果</h3>
+      <div><div class="field-label">标题</div><input class="edit-title" id="et-${id}" type="text"></div>
+      <div>
+        <div class="field-label" style="display:flex;justify-content:space-between;align-items:center;">
+          正文预览
+          <button onclick="toggleEdit('${id}')" style="font-size:0.7rem;padding:2px 8px;background:#16213e;border:1px solid #444;border-radius:4px;color:#aaa;cursor:pointer;" id="edit-toggle-${id}">编辑 HTML</button>
+        </div>
+        <div id="preview-${id}" style="background:#fff;color:#111;border-radius:6px;padding:12px 16px;max-height:300px;overflow-y:auto;font-size:0.9rem;line-height:1.7;"></div>
+        <textarea class="edit-body" id="eb-${id}" style="display:none;margin-top:6px;"></textarea>
+      </div>
+      <div><div class="field-label">标签 / 栏目</div><div class="meta-tags" id="mt-${id}"></div></div>
+    </div>
+  </div>
+  <div class="card-actions" id="act-${id}" style="display:none">
+    <button class="btn btn-success btn-sm" onclick="publishOne('${id}')">发布此篇</button>
+    <button class="btn btn-sm" onclick="translateArabic('${id}')" id="ar-btn-${id}" style="background:#9c27b0;color:#fff;">翻译为阿语</button>
+  </div>
+  <div id="ar-panel-${id}" style="display:none;margin-top:12px;background:#1a0a2e;border-radius:8px;padding:14px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <span style="color:#ce93d8;font-size:0.85rem;font-weight:bold;">النسخة العربية</span>
+      <button onclick="copyArabic('${id}')" id="copy-ar-btn-${id}" style="background:#9c27b0;color:#fff;border:none;border-radius:6px;padding:5px 14px;cursor:pointer;font-size:0.8rem;">一键复制</button>
+    </div>
+    <div id="ar-title-${id}" style="font-size:1rem;font-weight:bold;color:#fff;margin-bottom:8px;text-align:right;direction:rtl;font-family:Arial,sans-serif;"></div>
+    <div id="ar-body-${id}" style="font-size:0.85rem;color:#ccc;line-height:1.9;white-space:pre-wrap;max-height:260px;overflow-y:auto;text-align:right;direction:rtl;font-family:Arial,sans-serif;"></div>
+    <div id="ar-tags-${id}" style="margin-top:10px;font-size:0.75rem;color:#aaa;border-top:1px solid #333;padding-top:8px;"></div>
+  </div>
+  <div class="result-msg" id="msg-${id}"></div>`;
+  document.getElementById('cards').prepend(div);
+}
+
+function listenLogs(id) {
+  const box = document.getElementById('log-' + id);
+  const es = new EventSource(`/api/polish-logs?article_id=${id}`);
+  es.onmessage = e => {
+    if (e.data === '[heartbeat]') return;
+    const line = document.createElement('div');
+    line.className = 'log-line' + (e.data.startsWith('[DONE]') ? ' done' : e.data.startsWith('[ERROR]') ? ' error' : '');
+    line.textContent = e.data;
+    box.appendChild(line); box.scrollTop = box.scrollHeight;
+    if (e.data.startsWith('[DONE]')) { es.close(); setBadge(id, 'done', '完成'); loadResult(id); }
+    else if (e.data.startsWith('[ERROR]')) { es.close(); setBadge(id, 'error', '失败'); checkAllDone(); }
+  };
+}
+
+function setBadge(id, cls, text) {
+  const b = document.getElementById('badge-' + id);
+  b.className = 'badge badge-' + cls; b.textContent = text;
+}
+
+function loadResult(id) {
+  fetch(`/api/result?article_id=${id}`).then(r => r.json()).then(d => {
+    document.getElementById('ot-' + id).textContent = d.original_title;
+    document.getElementById('ob-' + id).textContent = d.original_body;
+    document.getElementById('et-' + id).value = d.polished_title;
+    document.getElementById('eb-' + id).value = d.polished_body;
+    // 渲染正文预览
+    document.getElementById('preview-' + id).innerHTML = d.polished_body;
+    // 标题 diff 高亮
+    if (d.diff_title) document.getElementById('ot-' + id).innerHTML = d.diff_title;
+    // 正文 diff 高亮
+    if (d.diff_body) document.getElementById('ob-' + id).innerHTML = d.diff_body;
+    const tags = [...d.channels.map(c => `<span>${c}</span>`), ...d.tabs.map(t => `<span>${TAB_NAMES[String(t)] || t}</span>`)].join('');
+    document.getElementById('mt-' + id).innerHTML = tags + (d.top_tag === 'pool' ? '<span style="color:#ff9800">置顶池</span>' : '');
+    document.getElementById('cmp-' + id).classList.add('visible');
+    document.getElementById('act-' + id).style.display = 'flex';
+    checkAllDone();
+  });
+}
+
+function checkAllDone() {
+  const badges = document.querySelectorAll('.badge');
+  const allDone = [...badges].every(b => !b.classList.contains('badge-running'));
+  if (allDone) document.getElementById('pub-all-btn').disabled = false;
+}
+
+function publishOne(id) {
+  const title = document.getElementById('et-' + id).value;
+  const body  = document.getElementById('eb-' + id).value;
+  document.querySelector(`#act-${id} button`).disabled = true;
+  fetch('/api/publish', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({article_id: id, title, body}) })
+  .then(r => r.json()).then(d => {
+    const msg = document.getElementById('msg-' + id);
+    if (d.ok) { msg.textContent = '✓ 发布成功'; msg.className = 'result-msg success'; setBadge(id, 'published', '已发布'); document.getElementById('act-' + id).style.display = 'none'; }
+    else { msg.textContent = `✗ ${d.error}`; msg.className = 'result-msg error-msg'; document.querySelector(`#act-${id} button`).disabled = false; }
+  });
+}
+
+function publishAll() {
+  document.querySelectorAll('.badge-done').forEach(b => publishOne(b.id.replace('badge-', '')));
+}
+
+// ── AI 文本处理 ──
+function callAI(mode) {
+  const text = document.getElementById('ai-input').value.trim();
+  const provider = document.getElementById('ai-provider').value;
+  const apiKey = document.getElementById('ai-key').value.trim();
+  const lang = document.getElementById('ai-lang').value;
+  const box = document.getElementById('ai-result');
+  if (!text) { box.textContent = '请输入文本'; return; }
+  if (!apiKey) { box.textContent = '请输入 API Key'; return; }
+  box.textContent = '处理中...';
+  fetch('/api/ai', { method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({text, mode, provider, api_key: apiKey, target_lang: lang})
+  }).then(r => r.json()).then(d => { box.textContent = d.result || d.error || '无结果'; })
+  .catch(e => { box.textContent = '请求失败: ' + e; });
+}
+
+// ── 置顶池管理 ──
+function loadTopPool() {
+  document.getElementById('top-list').innerHTML = '<div style="color:#666;font-size:.85rem;padding:10px">加载中...</div>';
+  fetch('/api/toppool').then(r => r.json()).then(d => {
+    if (d.error) { document.getElementById('top-list').innerHTML = `<div style="color:#f44">${d.error}</div>`; return; }
+    document.getElementById('top-stat').textContent = `共 ${d.count} 篇，超12小时 ${d.pool.filter(a=>a.expired).length} 篇`;
+    document.getElementById('top-list').innerHTML = d.pool.map(a => `
+      <div style="background:#16213e;border-radius:8px;padding:10px 14px;border-left:3px solid ${a.expired?'#f44336':'#4caf50'};">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="flex:1;font-size:0.85rem;">${a.title}</div>
+          <span style="font-size:0.72rem;color:${a.expired?'#f44336':'#888'}">${a.age_hours}h前</span>
+          <select onchange="setTopTag('${a.id}', this.value)" style="background:#0f3460;border:1px solid #333;border-radius:4px;padding:3px 6px;color:#eee;font-size:0.75rem;">
+            <option value="pool" ${a.top_tag==='pool'?'selected':''}>置顶池</option>
+            <option value="on" ${a.top_tag==='on'?'selected':''}>立即置顶</option>
+            <option value="nil" ${a.top_tag==='nil'?'selected':''}>不置顶</option>
+          </select>
+        </div>
+        <div style="font-size:0.7rem;color:#555;margin-top:4px;">${a.sort_time} · ID: ${a.id}</div>
+      </div>`).join('');
+  }).catch(e => { document.getElementById('top-list').innerHTML = `<div style="color:#f44">${e}</div>`; });
+}
+
+function setTopTag(articleId, topTag) {
+  fetch('/api/toppool/set', { method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({article_id: articleId, top_tag: topTag})
+  }).then(r => r.json()).then(d => {
+    document.getElementById('top-result').textContent = d.ok ? `✓ ${articleId} 已更新为 ${topTag}` : '✗ 更新失败';
+  });
+}
+
+function runAutoRemove() {
+  document.getElementById('top-result').textContent = '执行中...';
+  fetch('/api/toppool/run', {method:'POST'}).then(r=>r.json()).then(d => {
+    if (d.error) { document.getElementById('top-result').textContent = '失败: ' + d.error; return; }
+    document.getElementById('top-result').textContent = `✓ 下架 ${d.removed} 篇`;
+    loadTopPool();
+  });
+}
+
+// ── 阿语翻译 ──
+const TAB_NAMES = {"1":"Headline","2":"Transfers","4":"Football","14":"Asia","15":"Europe","16":"Africa","17":"America","186":"World Cup","225":"AF FIFA WC 2026"};
+
+function translateArabic(id) {
+  const btn = document.getElementById('ar-btn-' + id);
+  btn.disabled = true; btn.textContent = '翻译中...';
+  fetch('/api/arabic', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({article_id: id})})
+  .then(r => r.json()).then(d => {
+    btn.disabled = false; btn.textContent = '重新翻译';
+    if (d.error) { alert(d.error); return; }
+    document.getElementById('ar-title-' + id).textContent = d.ar_title;
+    document.getElementById('ar-body-' + id).textContent = d.ar_body;
+    const tagHtml = [...d.tabs.map(t => `<span style="background:#4a148c;color:#ce93d8;padding:2px 7px;border-radius:4px;margin-right:4px;display:inline-block">${t}</span>`),
+                     ...d.channels.map(c => `<span style="background:#16213e;color:#aaa;padding:2px 7px;border-radius:4px;margin-right:4px;display:inline-block">${c}</span>`)].join('')
+                   + (d.top_tag === 'pool' ? '<span style="color:#ff9800;margin-left:4px">置顶池</span>' : '');
+    document.getElementById('ar-tags-' + id).innerHTML = '专栏/标签: ' + tagHtml;
+    document.getElementById('ar-panel-' + id).style.display = '';
+    window['_ar_' + id] = d;
+  }).catch(() => { btn.disabled = false; btn.textContent = '翻译失败'; });
+}
+
+function copyArabic(id) {
+  const d = window['_ar_' + id];
+  if (!d) return;
+  const text = `${d.ar_title}\n\n${d.ar_body}\n\n---\n专栏: ${d.tabs.join(' | ')}\n标签: ${d.channels.join(', ')}${d.top_tag==='pool'?' | 置顶池':''}`;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.getElementById('copy-ar-btn-' + id);
+    btn.textContent = '已复制 ✓'; setTimeout(() => btn.textContent = '一键复制', 2000);
+  });
+}
+
+// ── 初始化 ──
+loadDrafts();
+</script>
+</body>
+</html>

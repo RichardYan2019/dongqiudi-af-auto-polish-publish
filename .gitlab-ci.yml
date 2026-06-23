@@ -1,0 +1,4 @@
+﻿include:
+  - project: 'devops/gitlab-ci-pipeline'
+    ref: main
+    file: 'templates/static-web-pipeline.yml'

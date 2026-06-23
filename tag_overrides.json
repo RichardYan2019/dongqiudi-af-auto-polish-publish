@@ -1,0 +1,116 @@
+{
+  "Timber": {
+    "value": "1593145",
+    "relate_sd_id": "1593145",
+    "label": "廷贝尔",
+    "remark": "Arsenal"
+  },
+  "Merino": {
+    "value": "222256",
+    "relate_sd_id": "222256",
+    "label": "梅里诺",
+    "remark": "Arsenal"
+  },
+  "Ben White": {
+    "value": "259980",
+    "relate_sd_id": "259980",
+    "label": "Ben White",
+    "remark": "Arsenal"
+  },
+  "Mosquera": {
+    "value": "1638799",
+    "relate_sd_id": "1638799",
+    "label": "克里斯蒂安-莫斯克拉",
+    "remark": "Arsenal"
+  },
+  "Enzo": {
+    "value": "1638917",
+    "relate_sd_id": "1638917",
+    "label": "恩佐-费尔南德斯",
+    "remark": "Chelsea"
+  },
+  "Raya": {
+    "value": "211023",
+    "relate_sd_id": "211023",
+    "label": "大卫-拉亚",
+    "remark": "Arsenal"
+  },
+  "David Raya": {
+    "value": "211023",
+    "relate_sd_id": "211023",
+    "label": "大卫-拉亚",
+    "remark": "Arsenal"
+  },
+  "Alphonso Davies": {
+    "value": "254243",
+    "relate_sd_id": "254243",
+    "label": "阿方索-戴维斯",
+    "remark": "Bayern"
+  },
+  "A. Davies": {
+    "value": "254243",
+    "relate_sd_id": "254243",
+    "label": "阿方索-戴维斯",
+    "remark": "Bayern"
+  },
+  "Balde": {
+    "value": "1592572",
+    "relate_sd_id": "1592572",
+    "label": "阿莱士-巴尔德",
+    "remark": "Barcelona"
+  },
+  "Donyell Malen": {
+    "value": "1590963",
+    "relate_sd_id": "1590963",
+    "label": "多尼尔-马伦",
+    "remark": "Roma"
+  },
+  "Vinicius Junior": {
+    "value": "462689",
+    "relate_sd_id": "462689",
+    "label": "维尼修斯",
+    "remark": "Real Madrid"
+  },
+  "Folarin Balogun": {
+    "value": "1591700",
+    "relate_sd_id": "1591700",
+    "label": "福拉林-巴洛贡",
+    "remark": "Monaco"
+  },
+  "Patrik Schick": {
+    "value": "176788",
+    "relate_sd_id": "176788",
+    "label": "帕特里克-席克",
+    "remark": "Leverkusen"
+  },
+  "Lamine Yamal": {
+    "value": "1670843",
+    "relate_sd_id": "1670843",
+    "label": "拉明-亚马尔",
+    "remark": "Barcelona"
+  },
+  "Rico Lewis": {
+    "value": "1636554",
+    "relate_sd_id": "1636554",
+    "label": "里科-刘易斯",
+    "remark": "Man City"
+  },
+  "Malen": {
+    "value": "1590963",
+    "relate_sd_id": "1590963",
+    "label": "多尼尔-马伦",
+    "remark": "Roma"
+  },
+  "Roma": {
+    "value": "1019",
+    "relate_sd_id": "1019",
+    "label": "罗马",
+    "remark": "Roma"
+  },
+  "AS Roma": {
+    "value": "1019",
+    "relate_sd_id": "1019",
+    "label": "罗马",
+    "remark": "Roma"
+  }
+}

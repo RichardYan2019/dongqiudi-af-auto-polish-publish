@@ -1,0 +1,320 @@
+"""
+英文草稿 → GPT polish → 现有英文规则 → 发布
+用法: python auto_polish_publish.py <article_id> [--api-key xxx] [--dry-run]
+"""
+import sys, os, re
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.path.dirname(__file__), ".env"), override=True)
+import requests as http_requests
+from bs4 import BeautifulSoup
+
+# 复用 auto_publish 的 session 和规则函数
+sys.path.insert(0, os.path.dirname(__file__))
+from auto_publish import (
+    session,
+    normalize_team_names, normalize_standard_names,
+    title_case, shorten_title, capitalize_names, capitalize_names_ai,
+    convert_beijing_to_utc, involves_top_team,
+)
+
+BASE_URL = "http://admin.allfootballapp.com"
+GPT_BASE  = "https://ai.flashapi.top/v1"
+GPT_MODEL = "gpt-5.5"
+
+BLOCK_TAGS = ["p", "li", "h1", "h2", "h3", "h4", "blockquote", "td", "th"]
+SKIP_TAGS  = ["script", "style", "code", "pre"]
+
+
+def call_gpt(api_key: str, prompt: str) -> str:
+    import time
+    for attempt in range(3):
+        try:
+            r = http_requests.post(
+                f"{GPT_BASE}/chat/completions",
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                json={"model": GPT_MODEL, "messages": [{"role": "user", "content": prompt}]},
+                timeout=180,
+            )
+            r.raise_for_status()
+            data = r.json()
+            choices = data.get("choices", [])
+            if not choices:
+                raise ValueError(f"API 返回空 choices: {data}")
+            return choices[0]["message"]["content"].strip()
+        except Exception as e:
+            if attempt < 2:
+                time.sleep(5)
+                continue
+            raise
+
+
+def fix_title_caps(title: str, api_key: str) -> str:
+    try:
+        return call_gpt(api_key, (
+            "Fix this football headline. Rules:\n"
+            "1. Capitalize proper nouns only: player names, manager names, club names, referee names, chairman/owner names, place names, competition names.\n"
+            "2. Do NOT capitalize every word — follow standard English sentence-style capitalization for all other words.\n"
+            "3. Do not change any words, only fix capitalization.\n"
+            "Return only the corrected headline.\n\n" + title
+        ))
+    except Exception:
+        return title
+
+
+def polish_text(text: str, api_key: str) -> str:
+    if not text.strip():
+        return text
+    prompt = (
+        "Polish the following English football news text. "
+        "Fix grammar, improve fluency and professionalism. "
+        "Keep all facts, names, numbers, and HTML tags/attributes exactly as-is. "
+        "Only output the polished text, nothing else.\n\n" + text
+    )
+    for attempt in range(2):
+        try:
+            return call_gpt(api_key, prompt)
+        except Exception as e:
+            if attempt == 1:
+                print(f"  [polish失败，保留原文] {e}")
+                return text
+
+
+def polish_html_body(html: str, api_key: str) -> str:
+    import traceback as _tb
+    soup = BeautifulSoup(html, "html.parser")
+    for block in soup.find_all(BLOCK_TAGS):
+        if block.find(SKIP_TAGS):
+            continue
+        inner = block.decode_contents().strip()
+        if not re.search(r'[a-zA-Z]', inner):
+            continue
+        try:
+            polished = polish_text(inner, api_key)
+            block.clear()
+            for child in list(BeautifulSoup(polished, "html.parser").contents):
+                block.append(child)
+        except Exception as e:
+            raise RuntimeError(f"polish_html_body 在处理块时失败: {e}\n块内容: {inner[:100]}\n{_tb.format_exc()}")
+    return str(soup)
+
+
+def detect_world_cup(title: str, body: str, api_key: str) -> dict:
+    """用 GPT 检测文章是否与世界杯相关，返回 {is_wc, continents}"""
+    from bs4 import BeautifulSoup as _BS
+    plain = _BS(body, "html.parser").get_text(" ")[:1500]
+    prompt = (
+        "Analyze this football article. Answer in JSON only, no explanation.\n"
+        "Fields:\n"
+        '  "is_world_cup": true/false — is this about FIFA World Cup 2026, national teams, or international football?\n'
+        '  "continents": list of continents involved, using only: ["Europe","Africa","America","Asia","Oceania"]\n'
+        "Return ONLY valid JSON.\n\n"
+        f"Title: {title}\n\nText: {plain}"
+    )
+    try:
+        result = call_gpt(api_key, prompt)
+        import json as _json
+        # Extract JSON from response
+        m = re.search(r'\{.*\}', result, re.DOTALL)
+        if m:
+            data = _json.loads(m.group())
+            return {
+                "is_wc": bool(data.get("is_world_cup", False)),
+                "continents": data.get("continents", []),
+            }
+    except Exception as e:
+        print(f"  [WC检测失败] {e}")
+    return {"is_wc": False, "continents": []}
+
+
+# Tab IDs for World Cup tabs (value field used in POST)
+WC_TAB_IDS = {
+    "WorldCup": "186",       # World Cup
+    "AfFifaWC": "225",       # AF FIFA World Cup 2026
+    "Europe": "15",
+    "Africa": "16",
+    "America": "17",
+    "Asia": "14",
+    "Oceania": None,         # Oceania tab不存在，暂留
+}
+WC_CLASSIFICATION_ID = "164"  # 专题专栏: AF FIFA World Cup 2026
+
+
+def get_article_detail(article_id):
+    resp = session.get(
+        f"{BASE_URL}/newarticle/admin/archives/view",
+        params={"type": "article", "id": article_id, "language": "en", "include_body": "1"},
+    )
+    data = resp.json()["data"]["archive"]
+    ext  = data.get("ext", {})
+    data["body"]     = ext.get("archive_body", "")
+    data["original_tabs"]     = ext.get("archive_tabs", {}).get("common", [])
+    data["original_channels"] = ext.get("archive_channels", [])
+    data["original_channels_level"] = ext.get("archive_channels_level", [])
+    return data
+
+
+def apply_english_rules(article: dict, api_key: str) -> dict:
+    title = article["title"]
+    body  = article["body"]
+
+    body  = convert_beijing_to_utc(body)
+    title = convert_beijing_to_utc(title)
+    # 去掉 CEST/CET 等时区标记（convert_beijing_to_utc 只处理 CET+N 格式）
+    body  = re.sub(r',?\s*Beijing\s+[Tt]ime\s*\([^)]*\)\s*[–—-]?\s*', ' ', body).strip()
+    title = re.sub(r',?\s*Beijing\s+[Tt]ime\s*\([^)]*\)\s*[–—-]?\s*', ' ', title).strip()
+    title = normalize_team_names(title)
+    body  = normalize_team_names(body)
+    title = re.sub(r'\bChampions League\b', 'UCL', title, flags=re.IGNORECASE)
+    title = normalize_standard_names(title)
+    body  = normalize_standard_names(body)
+    if len(title) > 100:
+        try:
+            title = call_gpt(api_key, (
+                f"This football headline is too long ({len(title)} chars). "
+                "Rewrite or condense it to under 100 characters. "
+                "Keep the core meaning. Return only the new headline, nothing else.\n\n" + title
+            ))
+            if len(title) > 100:
+                raise ValueError(f"API 改写后仍超过100字符（{len(title)}字）：{title}")
+        except Exception as e:
+            raise RuntimeError(f"标题超过100字符且无法自动改写，请人工处理：{e}")
+        title = normalize_team_names(title)
+        title = normalize_standard_names(title)
+    title = capitalize_names(title)
+    title = fix_title_caps(title, api_key)
+
+    article["title"]   = title
+    article["body"]    = body
+    article["top_tag"] = "pool" if involves_top_team(title, body) else "nil"
+
+    # 世界杯检测：识别后追加对应专栏
+    wc = detect_world_cup(title, body, api_key)
+    if wc["is_wc"]:
+        extra_tabs = [WC_TAB_IDS["WorldCup"]]
+        if WC_TAB_IDS["AfFifaWC"]:
+            extra_tabs.append(WC_TAB_IDS["AfFifaWC"])
+        for cont in wc.get("continents", []):
+            tid = WC_TAB_IDS.get(cont)
+            if tid:
+                extra_tabs.append(tid)
+        # 追加到原有 tabs，去重
+        current = [str(t) for t in article.get("original_tabs", [])]
+        for t in extra_tabs:
+            if t and t not in current:
+                current.append(t)
+        article["original_tabs"] = current
+        print(f"  [WC] 检测到世界杯相关，追加专栏: {extra_tabs}，大洲: {wc['continents']}")
+
+    # 有 World Cup 专栏的文章强制加 AF FIFA WC 2026 专题专栏并进置顶池
+    final_tabs = [str(t) for t in article.get("original_tabs", [])]
+    if WC_TAB_IDS["WorldCup"] in final_tabs:
+        if WC_TAB_IDS["AfFifaWC"] not in final_tabs:
+            final_tabs.append(WC_TAB_IDS["AfFifaWC"])
+            article["original_tabs"] = final_tabs
+        article["top_tag"] = "pool"
+        article["classifications"] = [WC_CLASSIFICATION_ID]
+
+    return article
+
+
+def publish_article(article_id, article: dict, dry_run=False):
+    channels     = article["original_channels"]
+    ch_level_map = {str(c["channel_id"]): c["level"]
+                    for c in article["original_channels_level"]}
+
+    post_data = {
+        "status": "1", "type": "article",
+        "title": article["title"],
+        "source": article.get("source", ""),
+        "source_url": article.get("source_url", ""),
+        "writer": article.get("writer", ""),
+        "litpic": article.get("litpic", ""),
+        "display_time": article.get("display_time", ""),
+        "sort_time": article.get("sort_time", ""),
+        "language": "en",
+        "add_to_tab": "1", "antispam_status": "1",
+        "style": article.get("style", "default"),
+        "redirect_in_app": "0", "tab_recommend": "1",
+        "body": article["body"], "con": article["body"],
+        "top_tag": article.get("top_tag", "nil"),
+        "from_third_part": "0", "insert_comment": "0",
+        "object_attr_channel": "", "object_attr_other": "", "event_attr": "",
+    }
+
+    for i, ch in enumerate(channels):
+        val = str(ch["value"])
+        post_data[f"channels[{i}]"] = val
+        post_data[f"channels_level[{val}]"] = ch_level_map.get(val, "A")
+
+    tabs = [str(t) for t in article["original_tabs"]] or ["1", "4"]
+    for i, t in enumerate(tabs):
+        post_data[f"tabs[{i}]"] = t
+
+    for i, c in enumerate(article.get("classifications", [])):
+        post_data[f"classifications[{i}]"] = c
+
+    if dry_run:
+        print("[dry-run] 不提交，post_data 预览：")
+        for k, v in post_data.items():
+            if k != "body":
+                print(f"  {k}: {v}")
+        print(f"  body length: {len(post_data['body'])}")
+        return {"errno": 0, "dry_run": True}
+
+    resp = session.post(
+        f"{BASE_URL}/newarticle/admin/archives/edit?id={article_id}",
+        data=post_data, timeout=30,
+    )
+    return resp.json()
+
+
+if __name__ == "__main__":
+    args = sys.argv[1:]
+    dry_run = "--dry-run" in args
+    args = [a for a in args if a != "--dry-run"]
+
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if "--api-key" in args:
+        idx = args.index("--api-key")
+        api_key = args[idx + 1]
+        args = args[:idx] + args[idx + 2:]
+
+    if not args:
+        print("用法: python auto_polish_publish.py <article_id> [--api-key xxx] [--dry-run]")
+        sys.exit(1)
+
+    if not api_key:
+        api_key = input("请输入 API Key: ").strip()
+
+    article_id = args[0]
+    print(f"=== 获取草稿 {article_id} ===")
+    article = get_article_detail(article_id)
+    print(f"标题: {article['title']}")
+    print(f"原 channels: {[c['en_name'] for c in article['original_channels']]}")
+    print(f"原 tabs: {article['original_tabs']}")
+
+    print("\n=== Polish 标题 ===")
+    article["title"] = polish_text(article["title"], api_key)
+    print(f"→ {article['title']}")
+
+    print("\n=== Polish 正文 ===")
+    article["body"] = polish_html_body(article["body"], api_key)
+    print("正文 polish 完成")
+
+    print("\n=== 应用英文规则 ===")
+    article = apply_english_rules(article, api_key)
+    print(f"最终标题: {article['title']}")
+    print(f"置顶池: {article['top_tag']}")
+
+    if not dry_run:
+        confirm = input("\n确认发布？(yes/no): ").strip().lower()
+        if confirm != "yes":
+            print("已取消")
+            sys.exit(0)
+
+    print("\n=== 发布 ===")
+    result = publish_article(article_id, article, dry_run=dry_run)
+    if result.get("errno") == 0:
+        print(f"成功{'（dry-run）' if dry_run else ''}")
+    else:
+        print(f"失败: {result}")

@@ -1,0 +1,96 @@
+{
+  "Arsenal": [
+    "Raya", "Ramsdale", "White", "Saliba", "Gabriel", "Calafiori", "Timber", "Lewis-Skelly",
+    "Adarabioyo", "Mosquera", "Ødegaard", "Rice", "Merino", "Zubimendi", "Partey",
+    "Havertz", "Saka", "Martinelli", "Trossard", "Nketiah", "Jesus", "Gyökeres",
+    "Madueke", "Smith Rowe", "Nørgaard", "Hincapie", "Dowman", "Arteta"
+  ],
+  "Chelsea": [
+    "Jørgensen", "Sanchez", "Chalobah", "Colwill", "Badiashile", "Cucurella", "Gusto",
+    "Reece James", "Fofana", "Disasi", "Palmer", "Enzo", "Caicedo", "Lavia", "Mudryk",
+    "Pedro Neto", "Madueke", "Nkunku", "Jackson", "Guiu", "Estêvão", "Acheampong",
+    "Hato", "Santos", "Sarr", "Gittens", "Delap", "Wiley", "Essugo", "Sharman-Lowe",
+    "Słonina", "Heaton", "Bogarde", "Alysson"
+  ],
+  "Arsenal": [
+    "Raya", "Ramsdale", "White", "Saliba", "Gabriel", "Calafiori", "Timber", "Lewis-Skelly",
+    "Adarabioyo", "Mosquera", "Ødegaard", "Rice", "Merino", "Zubimendi",
+    "Havertz", "Saka", "Martinelli", "Trossard", "Nketiah", "Jesus", "Gyökeres",
+    "Smith Rowe", "Nørgaard", "Hincapie", "Dowman", "Arteta"
+  ],
+  "Man City": [
+    "Ederson", "Ortega", "Stones", "Ruben Dias", "Ake", "Gvardiol", "Lewis", "Akanji",
+    "Rodri", "Kovacic", "De Bruyne", "Bernardo Silva", "Doku", "Foden", "Haaland",
+    "Marmoush", "Savinho", "Nunes", "Guehi", "Khusanov", "Nypan", "O'Reilly",
+    "Alleyne", "Trafford", "Cherki", "Guardiola"
+  ],
+  "Man United": [
+    "Onana", "Bayındır", "Heaton", "De Ligt", "Lindelof", "Maguire", "Dalot", "Shaw",
+    "Mazraoui", "Malacia", "Casemiro", "Ugarte", "Mainoo", "Mount", "Bruno Fernandes",
+    "Rashford", "Garnacho", "Amad Diallo", "Zirkzee", "Cunha", "Yoro", "Fredricson",
+    "Dorgu", "Obi", "Heaven", "León", "Amorim"
+  ],
+  "Liverpool": [
+    "Alisson", "Kelleher", "Van Dijk", "Konate", "Gomez", "Robertson", "Trent",
+    "Gravenberch", "Mac Allister", "Szoboszlai", "Endo", "Salah", "Gakpo", "Jota",
+    "Isak", "Diaz", "Chiesa", "Curtis Jones", "Mamardashvili", "Bradley", "Kerkez",
+    "Ramsay", "Ekitiké", "Bajcetic", "Nyoni", "Ngumoha", "Slot"
+  ],
+  "Tottenham": [
+    "Vicario", "Forster", "Romero", "Van de Ven", "Dragusin", "Porro", "Udogie",
+    "Bentancur", "Bissouma", "Maddison", "Kulusevski", "Son", "Solanke", "Richarlison",
+    "Bergvall", "Gray", "Odobert", "Tel", "Kinsky", "Spence", "Danso", "Pape Sarr",
+    "Postecoglou"
+  ],
+  "Newcastle": [
+    "Pope", "Dubravka", "Trippier", "Schar", "Botman", "Burn", "Livramento", "Hall",
+    "Guimaraes", "Tonali", "Willock", "Joelinton", "Gordon", "Isak", "Barnes",
+    "Almiron", "Murphy", "Osula", "Miley", "Gillespie", "Krafth", "Howe"
+  ],
+  "Aston Villa": [
+    "Martinez", "Olsen", "Cash", "Konsa", "Mings", "Digne", "Moreno", "Tielemans",
+    "Douglas Luiz", "McGinn", "Kamara", "Watkins", "Bailey", "Diaby", "Rogers",
+    "Buendia", "Barkley", "Bogarde", "Maatsen", "P. Torres", "Abraham", "Emery"
+  ],
+  "Real Madrid": [
+    "Courtois", "Lunin", "Carvajal", "Rüdiger", "Alaba", "F. Mendy", "Fran García",
+    "Tchouameni", "Valverde", "Modric", "Bellingham", "Camavinga", "D. Ceballos",
+    "Vini Jr.", "Rodrygo", "Mbappe", "Brahim", "E. Militao", "Asencio", "Huijsen",
+    "Arda Güler", "Mastantuono", "Szczesny", "Ancelotti"
+  ],
+  "Barcelona": [
+    "Szczesny", "Ter Stegen", "Kounde", "Christensen", "Cubarsí", "Balde", "Cancelo",
+    "Pedri", "Gavi", "Olmo", "F. De Jong", "Casado", "Fermín", "Raphinha", "Lamine Yamal",
+    "Lewandowski", "Ferran", "R. Araujo", "Eric", "Gerard Martín", "Dani Olmo", "Flick"
+  ],
+  "Atletico Madrid": [
+    "Oblak", "Griezmann", "Alvarez", "Correa", "Llorente", "Koke", "De Paul",
+    "Witsel", "Molina", "Reinildo", "Gimenez", "Hermoso", "Simeone"
+  ],
+  "PSG": [
+    "Donnarumma", "Marquinhos", "Hakimi", "Nuno Mendes", "Pacho", "Zaire-Emery",
+    "Vitinha", "Fabian Ruiz", "Dembele", "Kvaratskhelia", "Barcola", "Asensio",
+    "Mayulu", "Luis Enrique"
+  ],
+  "Bayern": [
+    "Neuer", "Ulreich", "Upamecano", "Kim", "Guerreiro", "A. Davies", "Kimmich",
+    "Goretzka", "Musiala", "Sane", "Muller", "Kane", "Gnabry", "Coman", "Pavlovic",
+    "Kompany", "Woltemade"
+  ],
+  "Dortmund": [
+    "Kobel", "Hummels", "Schlotterbeck", "Ryerson", "Maatsen", "Can", "Brandt",
+    "Nmecha", "Sancho", "Adeyemi", "Guirassy", "Beier", "Gittens", "Niko Kovac"
+  ],
+  "Inter": [
+    "Sommer", "Martinez", "Bastoni", "Pavard", "Darmian", "Barella", "Calhanoglu",
+    "Mkhitaryan", "Dimarco", "Thuram", "Lautaro", "Frattesi", "Zielinski", "Simone"
+  ],
+  "Juventus": [
+    "Di Gregorio", "Bremer", "Gatti", "Cambiaso", "Danilo", "Locatelli", "Fagioli",
+    "Rabiot", "Vlahovic", "Yildiz", "Koopmeiners", "Conceicao", "Thiago Motta"
+  ],
+  "Napoli": [
+    "Meret", "Rrahmani", "Buongiorno", "Olivera", "Di Lorenzo", "Lobotka", "Anguissa",
+    "Politano", "Kvaratskhelia", "Lukaku", "Raspadori", "Neres", "Conte"
+  ]
+}
