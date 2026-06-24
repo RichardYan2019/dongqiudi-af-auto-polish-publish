@@ -93,6 +93,8 @@ textarea.edit-body:focus { outline: none; border-color: #00d4ff; }
       <div class="sel-count" id="sel-count">请从左侧勾选草稿</div>
       <button class="btn btn-primary" id="polish-btn" disabled onclick="startBatchPolish()">批量 Polish</button>
       <button class="btn btn-success" id="pub-all-btn" disabled onclick="publishAll()">发布全部已完成</button>
+      <input id="article-id-input" type="text" placeholder="输入文章 ID" style="background:#16213e;border:1px solid #333;border-radius:6px;padding:7px 10px;color:#eee;font-size:0.85rem;width:140px;">
+      <button class="btn btn-primary btn-sm" onclick="polishById()">按 ID Polish</button>
     </div>
     <div class="cards" id="cards"></div>
   </div>
@@ -205,6 +207,16 @@ function toggleAll() {
   const cbs = document.querySelectorAll('#draft-list input[type=checkbox]');
   const allChecked = [...cbs].every(c => c.checked);
   cbs.forEach(c => { c.checked = !allChecked; onCheck(c.value, !allChecked); });
+}
+
+function polishById() {
+  const id = document.getElementById('article-id-input').value.trim();
+  if (!id) return;
+  articles[id] = { title: id };
+  createCard(id);
+  fetch('/api/polish', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({article_id: id}) })
+    .then(() => listenLogs(id));
+  document.getElementById('article-id-input').value = '';
 }
 
 function startBatchPolish() {
