@@ -2,11 +2,15 @@ import requests
 import json
 import os
 import re
-import anthropic
+try:
+    import anthropic
+    claude = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY")) if os.getenv("ANTHROPIC_API_KEY") else None
+except ImportError:
+    anthropic = None
+    claude = None
 from dotenv import load_dotenv
 
 load_dotenv()
-claude = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
 # 球队全称 -> 简称映射（依据球队官网）
 TEAM_NAME_MAP = {
@@ -337,6 +341,8 @@ def title_case(text):
 def capitalize_names_ai(text):
     """用 Claude 处理球队、球员、地名首字母大写"""
     if not text.strip():
+        return text
+    if claude is None:
         return text
     try:
         msg = claude.messages.create(
