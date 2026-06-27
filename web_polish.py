@@ -12,6 +12,8 @@ from auto_publish import get_drafts, session as af_session
 from auto_polish_publish import (
     get_article_detail, polish_text, polish_html_body,
     apply_english_rules, publish_article as do_publish,
+    get_zh_article_detail, translate_title_to_en, translate_html_body_to_en,
+    create_en_draft,
 )
 
 app = Flask(__name__)
@@ -70,6 +72,96 @@ def run_polish(article_id: str, lq: queue.Queue):
         lq.put(f"[ERROR] {e}")
         for line in full_err.splitlines():
             lq.put(f"[TRACE] {line}")
+
+
+def run_polish_from_zh(temp_key: str, zh_id: str, lq: queue.Queue):
+    """中文 ID → 翻译 → 创建英文草稿 → 跑标准 polish 流程"""
+    try:
+        lq.put(f"获取中文文章 {zh_id}...")
+        zh_article = get_zh_article_detail(zh_id)
+        zh_title = zh_article.get("title", "")
+        zh_body  = zh_article.get("body", "")
+        lq.put(f"中文标题: {zh_title}")
+
+        lq.put("翻译标题为英文...")
+        en_title = translate_title_to_en(zh_title, API_KEY)
+        lq.put(f"→ {en_title}")
+
+        lq.put("翻译正文为英文（逐段处理）...")
+        en_body = translate_html_body_to_en(zh_body, API_KEY)
+
+        lq.put("在 AF 后台创建英文草稿...")
+        new_en_id = create_en_draft(zh_article, en_title, en_body)
+        lq.put(f"[NEW_ID] {new_en_id}")
+        lq.put(f"新英文文章 ID: {new_en_id}")
+
+        # 构造 article 对象走 apply_english_rules（与 run_polish 保持一致）
+        article = {
+            "title": en_title,
+            "body":  en_body,
+            "original_tabs": [],
+            "original_channels": [],
+            "original_channels_level": [],
+            "source":      zh_article.get("source", "DQD"),
+            "source_url":  zh_article.get("source_url", ""),
+            "writer":      zh_article.get("writer", ""),
+            "litpic":      zh_article.get("litpic", ""),
+            "display_time": zh_article.get("display_time", ""),
+            "sort_time":    zh_article.get("sort_time", ""),
+            "style":       zh_article.get("style", "default"),
+        }
+
+        lq.put("Polish 英文标题...")
+        article["title"] = polish_text(article["title"], API_KEY)
+        lq.put(f"→ {article['title']}")
+
+        lq.put("Polish 英文正文（逐段处理）...")
+        article["body"] = polish_html_body(article["body"], API_KEY)
+
+        lq.put("应用英文规则...")
+        article = apply_english_rules(article, API_KEY)
+        lq.put(f"最终标题: {article['title']}")
+        lq.put(f"置顶池: {article['top_tag']}")
+
+        store[temp_key] = {
+            "title": article["title"],
+            "body":  article["body"],
+            "original_title": zh_title,
+            "original_body":  zh_body,
+            "original_tabs":  article["original_tabs"],
+            "original_channels": article["original_channels"],
+            "original_channels_level": article["original_channels_level"],
+            "top_tag": article["top_tag"],
+            "source":  article.get("source", ""),
+            "source_url": article.get("source_url", ""),
+            "writer":  article.get("writer", ""),
+            "litpic":  article.get("litpic", ""),
+            "display_time": article.get("display_time", ""),
+            "sort_time":    article.get("sort_time", ""),
+            "style":   article.get("style", "default"),
+            "target_id": str(new_en_id),
+        }
+        lq.put("[DONE]")
+    except Exception as e:
+        import traceback
+        full_err = traceback.format_exc()
+        print("=== POLISH-FROM-ZH ERROR ===")
+        print(full_err)
+        lq.put(f"[ERROR] {e}")
+        for line in full_err.splitlines():
+            lq.put(f"[TRACE] {line}")
+
+
+@app.route("/api/polish-from-zh", methods=["POST"])
+def api_polish_from_zh():
+    zh_id = str(request.json.get("zh_id", "")).strip()
+    if not zh_id:
+        return jsonify({"error": "缺少 zh_id"}), 400
+    temp_key = f"zh_{zh_id}"
+    lq = queue.Queue(maxsize=500)
+    log_queues[temp_key] = lq
+    threading.Thread(target=run_polish_from_zh, args=(temp_key, zh_id, lq), daemon=True).start()
+    return jsonify({"ok": True, "temp_key": temp_key})
 
 
 @app.route("/")
@@ -175,11 +267,14 @@ def api_publish():
     data["title"] = body.get("title", data["title"])
     data["body"]  = body.get("body", data["body"])  # 前端传回 HTML
 
+    # 中文流程会带 target_id（实际要发布到的英文文章 ID）；普通流程没有 target_id 时用 article_id 本身
+    publish_id = data.get("target_id") or article_id
+
     try:
-        result = do_publish(article_id, data)
+        result = do_publish(publish_id, data)
         if result.get("errno") == 0:
             store.pop(article_id, None)
-            return jsonify({"ok": True})
+            return jsonify({"ok": True, "published_id": publish_id})
         return jsonify({"error": result.get("errmsg", "未知错误")}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500

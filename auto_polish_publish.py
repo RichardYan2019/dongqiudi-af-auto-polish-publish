@@ -11,13 +11,14 @@ from bs4 import BeautifulSoup
 # 复用 auto_publish 的 session 和规则函数
 sys.path.insert(0, os.path.dirname(__file__))
 from auto_publish import (
-    session,
+    session, zh_session,
     normalize_team_names, normalize_standard_names,
     title_case, shorten_title, capitalize_names, capitalize_names_ai,
     convert_beijing_to_utc, involves_top_team,
 )
 
-BASE_URL = "http://admin.allfootballapp.com"
+BASE_URL    = "http://admin.allfootballapp.com"
+BASE_URL_ZH = "https://zh-admin.allfootballapp.com"
 GPT_BASE  = "https://ai.flashapi.top/v1"
 GPT_MODEL = "gpt-5.5"
 
@@ -144,13 +145,162 @@ def get_article_detail(article_id):
         f"{BASE_URL}/newarticle/admin/archives/view",
         params={"type": "article", "id": article_id, "language": "en", "include_body": "1"},
     )
-    data = resp.json()["data"]["archive"]
+    payload = resp.json()
+    if not isinstance(payload, dict) or payload.get("errno", 0) not in (0, None):
+        raise ValueError(f"文章 {article_id} 获取失败：{payload.get('msg', '后台返回异常')}")
+    raw = payload.get("data")
+    if not isinstance(raw, dict) or not isinstance(raw.get("archive"), dict):
+        raise ValueError(f"文章 {article_id} 不存在或没有英文版本")
+    data = raw["archive"]
     ext  = data.get("ext", {})
     data["body"]     = ext.get("archive_body", "")
-    data["original_tabs"]     = ext.get("archive_tabs", {}).get("common", [])
-    data["original_channels"] = ext.get("archive_channels", [])
+    tabs = ext.get("archive_tabs", {})
+    if isinstance(tabs, dict):
+        data["original_tabs"] = tabs.get("common", [])
+    else:
+        data["original_tabs"] = tabs if isinstance(tabs, list) else []
+    data["original_channels"]       = ext.get("archive_channels", [])
     data["original_channels_level"] = ext.get("archive_channels_level", [])
     return data
+
+
+# ============================================================
+# 中文文章 → 翻译 → 创建英文草稿 流程
+# ============================================================
+
+def get_zh_article_detail(zh_id):
+    """从中文后台拉取中文文章详情"""
+    resp = zh_session.get(
+        f"{BASE_URL_ZH}/newarticle/admin/archives/view",
+        params={"type": "article", "id": zh_id, "language": "zh", "include_body": "1"},
+        timeout=30,
+    )
+    payload = resp.json()
+    if not isinstance(payload, dict) or payload.get("errno", 0) not in (0, None):
+        raise ValueError(f"中文文章 {zh_id} 获取失败：{payload.get('errmsg', '后台返回异常')}")
+    raw = payload.get("data")
+    if not isinstance(raw, dict) or not isinstance(raw.get("archive"), dict):
+        raise ValueError(f"中文文章 {zh_id} 不存在或没有中文版本")
+    data = raw["archive"]
+    ext  = data.get("ext", {})
+    data["body"] = ext.get("archive_body", "")
+    return data
+
+
+def translate_title_to_en(zh_title: str, api_key: str) -> str:
+    """中文标题 → 英文（不含 polish，只翻译；后续 apply_english_rules 会再修标题）"""
+    prompt = (
+        "Translate this Chinese football news headline into natural, professional English. "
+        "Keep player names, team names, and competition names accurate. "
+        "Return only the translated headline, nothing else, no quotes, no extra punctuation.\n\n"
+        + zh_title
+    )
+    return call_gpt(api_key, prompt)
+
+
+def translate_html_body_to_en(html: str, api_key: str) -> str:
+    """逐块翻译中文 HTML 正文为英文，保留所有标签、属性、图片"""
+    import traceback as _tb
+    soup = BeautifulSoup(html, "html.parser")
+    for block in soup.find_all(BLOCK_TAGS):
+        if block.find(SKIP_TAGS):
+            continue
+        inner = block.decode_contents().strip()
+        # 无内容 或 无中文字符就跳过
+        if not inner or not re.search(r'[一-鿿]', inner):
+            continue
+        try:
+            prompt = (
+                "Translate the following Chinese football news HTML fragment into natural, "
+                "professional English. Keep ALL HTML tags, attributes, and image URLs EXACTLY as-is. "
+                "Translate only the visible Chinese text. Keep player names, team names, and "
+                "competition names accurate. Return only the translated HTML fragment, nothing else, "
+                "no markdown code fences.\n\n" + inner
+            )
+            translated = call_gpt(api_key, prompt)
+            # 去掉模型可能加的 ```html ... ``` 包装
+            translated = re.sub(r'^\s*```(?:html)?\s*', '', translated)
+            translated = re.sub(r'\s*```\s*$', '', translated)
+            block.clear()
+            for child in list(BeautifulSoup(translated, "html.parser").contents):
+                block.append(child)
+        except Exception as e:
+            raise RuntimeError(f"translate_html_body_to_en 处理块失败: {e}\n块内容: {inner[:120]}\n{_tb.format_exc()}")
+    return str(soup)
+
+
+def _extract_new_article_id(payload):
+    """从 AF 后台 create/edit 返回的 JSON 里提取新文章 ID（兼容多种字段位置）"""
+    if not isinstance(payload, dict):
+        return None
+    for k in ("id", "article_id", "archive_id"):
+        v = payload.get(k)
+        if v: return v
+    data = payload.get("data") or {}
+    if isinstance(data, dict):
+        for k in ("id", "article_id", "archive_id"):
+            v = data.get(k)
+            if v: return v
+        archive = data.get("archive") or {}
+        if isinstance(archive, dict):
+            v = archive.get("id")
+            if v: return v
+    return None
+
+
+def create_en_draft(zh_article: dict, en_title: str, en_body: str) -> str:
+    """在 AF 英文后台创建一篇新的英文草稿，返回新生成的 article_id（字符串）"""
+    post_data = {
+        "status": "0",  # 0=草稿；发布时由 publish_article 改成 1
+        "type": "article",
+        "title": en_title,
+        "body":  en_body,
+        "con":   en_body,
+        "language": "en",
+        "source":      zh_article.get("source", "DQD"),
+        "source_url":  zh_article.get("source_url", ""),
+        "writer":      zh_article.get("writer", ""),
+        "litpic":      zh_article.get("litpic", ""),
+        "style":       zh_article.get("style", "default"),
+        "add_to_tab":       "1",
+        "antispam_status":  "1",
+        "redirect_in_app":  "0",
+        "tab_recommend":    "1",
+        "from_third_part":  "0",
+        "insert_comment":   "0",
+        "top_tag":          "nil",
+        "object_attr_channel": "",
+        "object_attr_other":   "",
+        "event_attr":          "",
+    }
+    # 几个可能的创建端点，按概率从高到低尝试
+    candidates = [
+        f"{BASE_URL}/newarticle/admin/archives/edit",
+        f"{BASE_URL}/newarticle/admin/archives/edit?id=0",
+        f"{BASE_URL}/newarticle/admin/archives/add",
+        f"{BASE_URL}/newarticle/admin/archives/create",
+    ]
+    last_err = None
+    for url in candidates:
+        try:
+            resp = session.post(url, data=post_data, timeout=60)
+            try:
+                j = resp.json()
+            except Exception:
+                last_err = f"{url} 返回非 JSON（HTTP {resp.status_code}）"
+                continue
+            if j.get("errno") not in (0, None):
+                last_err = f"{url}: {j.get('errmsg', f'errno={j.get(\"errno\")}')}"
+                continue
+            new_id = _extract_new_article_id(j)
+            if new_id:
+                print(f"[create_en_draft] success via {url} → new id={new_id}")
+                return str(new_id)
+            last_err = f"{url}: 返回 errno=0 但找不到新 ID（{str(j)[:300]}）"
+        except Exception as e:
+            last_err = f"{url}: {type(e).__name__}: {e}"
+            continue
+    raise RuntimeError(f"创建英文草稿失败：{last_err}")
 
 
 def apply_english_rules(article: dict, api_key: str) -> dict:

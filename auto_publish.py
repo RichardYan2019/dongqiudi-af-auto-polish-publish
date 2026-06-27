@@ -65,6 +65,22 @@ session = requests.Session()
 session.cookies.update(cookies)
 session.headers.update(headers)
 
+# 中文后台（zh-admin），用于通过中文 ID 拉取原文翻译
+zh_cookies = {
+    "auth_token": os.environ.get("AF_AUTH_TOKEN", ""),
+    "laravel_session": os.environ.get("AF_ZH_LARAVEL_SESSION", ""),
+    "remember_82e5d2c56bdd0811318f0cf078b78bfc": os.environ.get("AF_REMEMBER_TOKEN", ""),
+    "afuid": os.environ.get("AF_UID", ""),
+}
+zh_headers = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Referer": "https://zh-admin.allfootballapp.com/dist",
+    "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+}
+zh_session = requests.Session()
+zh_session.cookies.update(zh_cookies)
+zh_session.headers.update(zh_headers)
+
 # 标准名字（球队/球员/官员/媒体），用于统一大小写和格式
 STANDARD_NAMES = [
     # 球队

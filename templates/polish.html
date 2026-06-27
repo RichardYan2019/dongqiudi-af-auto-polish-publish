@@ -95,6 +95,8 @@ textarea.edit-body:focus { outline: none; border-color: #00d4ff; }
       <button class="btn btn-success" id="pub-all-btn" disabled onclick="publishAll()">发布全部已完成</button>
       <input id="article-id-input" type="text" placeholder="输入文章 ID" style="background:#16213e;border:1px solid #333;border-radius:6px;padding:7px 10px;color:#eee;font-size:0.85rem;width:140px;">
       <button class="btn btn-primary btn-sm" onclick="polishById()">按 ID Polish</button>
+      <input id="zh-id-input" type="text" placeholder="输入中文 ID" style="background:#16213e;border:1px solid #333;border-radius:6px;padding:7px 10px;color:#eee;font-size:0.85rem;width:140px;">
+      <button class="btn btn-primary btn-sm" onclick="polishFromZh()">按中文 ID 翻译&Polish</button>
     </div>
     <div class="cards" id="cards"></div>
   </div>
@@ -217,6 +219,17 @@ function polishById() {
   fetch('/api/polish', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({article_id: id}) })
     .then(() => listenLogs(id));
   document.getElementById('article-id-input').value = '';
+}
+
+function polishFromZh() {
+  const zhId = document.getElementById('zh-id-input').value.trim();
+  if (!zhId) return;
+  const tempKey = `zh_${zhId}`;
+  articles[tempKey] = { title: `ZH ${zhId} → 待翻译...` };
+  createCard(tempKey);
+  fetch('/api/polish-from-zh', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({zh_id: zhId}) })
+    .then(() => listenLogs(tempKey));
+  document.getElementById('zh-id-input').value = '';
 }
 
 function startBatchPolish() {
