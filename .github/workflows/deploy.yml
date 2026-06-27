@@ -1,0 +1,28 @@
+name: Deploy to Fly.io
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Stage ZH session secret
+        run: flyctl secrets set --stage AF_ZH_LARAVEL_SESSION="${{ secrets.AF_ZH_LARAVEL_SESSION }}" --app af-polish-publish
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Deploy to Fly.io
+        run: flyctl deploy --remote-only --app af-polish-publish
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
