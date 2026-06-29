@@ -250,30 +250,69 @@ def _extract_new_article_id(payload):
 
 _CACHED_VALID_EN_CHANNELS = None
 
+def _load_channels_from_tag_overrides(logger=None):
+    """
+    从 tag_overrides.json 读已知有效的 EN channel ID。
+    这些 value 是历史上真实 publish 时用过、被 EN 后台接受过的 channel，
+    所以一定能通过 /create 的合法性校验。
+    """
+    log = logger or (lambda _msg: None)
+    try:
+        import json as _json
+        path = os.path.join(os.path.dirname(__file__), "tag_overrides.json")
+        if not os.path.exists(path):
+            log(f"[channels] tag_overrides.json 不存在: {path}")
+            return []
+        with open(path, "r", encoding="utf-8") as f:
+            data = _json.load(f)
+        seen = []
+        for entry in data.values():
+            if not isinstance(entry, dict):
+                continue
+            cid = entry.get("value")
+            if cid and str(cid) not in seen:
+                seen.append(str(cid))
+            if len(seen) >= 5:
+                break
+        log(f"[channels] 从 tag_overrides.json 加载到 {len(seen)} 个已知合法 channel: {seen}")
+        return seen
+    except Exception as e:
+        log(f"[channels] tag_overrides.json 读取异常: {type(e).__name__}: {e}")
+        return []
+
+
 def _fetch_valid_en_channel_ids(logger=None):
     """
-    /create 端点要求 channels 是真实存在的 EN channel ID。
+    /create 端点要求 channels 是 EN 后台真实存在的 channel ID。
     ZH/EN channel 系统独立、ID 不通用，无法直接搬。
-    这里从英文后台一篇真实文章里借一组合法 channel ID 当占位（结果缓存），
-    草稿创建出来后由前端覆盖真正的 channels。
-    详细过程会写到 logger（如果传了），方便排查失败原因。
+    优先级：
+      1) 缓存（之前成功过的）
+      2) tag_overrides.json（确定合法）
+      3) 动态从 EN 已发布文章里借
+      4) 环境变量 AF_EN_FALLBACK_CHANNEL_ID
+      5) 264（最后兜底，可能失败）
     """
     log = logger or (lambda _msg: None)
 
     global _CACHED_VALID_EN_CHANNELS
     if _CACHED_VALID_EN_CHANNELS:
-        log(f"[channels] 使用上一次缓存: {_CACHED_VALID_EN_CHANNELS}")
+        log(f"[channels] 使用缓存: {_CACHED_VALID_EN_CHANNELS}")
         return _CACHED_VALID_EN_CHANNELS
 
-    # 1) 动态从 EN 后台借合法 channel
+    # 1) tag_overrides.json（最可靠）
+    known = _load_channels_from_tag_overrides(logger=log)
+    if known:
+        _CACHED_VALID_EN_CHANNELS = known[:3]  # 多带几个 channel 增加被接受概率
+        return _CACHED_VALID_EN_CHANNELS
+
+    # 2) 动态从 EN 已发布文章列表里借
     try:
         r = session.get(
             f"{BASE_URL}/newarticle/admin/archives/list",
             params={"language": "en", "status": "1", "per_page": 10, "page": 1},
             timeout=15,
         )
-        payload = r.json()
-        archives = (payload.get("data") or {}).get("archives") or []
+        archives = (r.json().get("data") or {}).get("archives") or []
         log(f"[channels] 探测 EN 已发布列表，拉到 {len(archives)} 篇文章")
         for archive in archives:
             aid = archive.get("id")
@@ -284,24 +323,23 @@ def _fetch_valid_en_channel_ids(logger=None):
                 channels = detail.get("original_channels") or []
                 ids = [str(c.get("value")) for c in channels if c.get("value")]
                 if ids:
-                    _CACHED_VALID_EN_CHANNELS = ids[:2]
+                    _CACHED_VALID_EN_CHANNELS = ids[:3]
                     log(f"[channels] 从文章 {aid} 借到 channel: {_CACHED_VALID_EN_CHANNELS}")
                     return _CACHED_VALID_EN_CHANNELS
-                log(f"[channels] 文章 {aid} 没有 channels，继续下一篇")
             except Exception as e:
                 log(f"[channels] 文章 {aid} 读取异常: {type(e).__name__}: {e}")
                 continue
     except Exception as e:
         log(f"[channels] 列表拉取异常: {type(e).__name__}: {e}")
 
-    # 2) 用户配置的兜底 ID
+    # 3) 环境变量
     env_ch = os.environ.get("AF_EN_FALLBACK_CHANNEL_ID", "").strip()
     if env_ch:
-        log(f"[channels] 动态查询无结果，使用 AF_EN_FALLBACK_CHANNEL_ID={env_ch}")
+        log(f"[channels] 使用环境变量 AF_EN_FALLBACK_CHANNEL_ID={env_ch}")
         return [env_ch]
 
-    # 3) 最后兜底
-    log("[channels] 全部失败，fallback 到 264（很可能仍然失败，建议设 AF_EN_FALLBACK_CHANNEL_ID 环境变量为一个已知合法的 EN channel ID）")
+    # 4) 兜底
+    log("[channels] 所有来源失败，fallback 到 264")
     return ["264"]
 
 
