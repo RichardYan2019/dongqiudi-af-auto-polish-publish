@@ -250,23 +250,31 @@ def _extract_new_article_id(payload):
 
 _CACHED_VALID_EN_CHANNELS = None
 
-def _fetch_valid_en_channel_ids():
+def _fetch_valid_en_channel_ids(logger=None):
     """
     /create 端点要求 channels 是真实存在的 EN channel ID。
     ZH/EN channel 系统独立、ID 不通用，无法直接搬。
     这里从英文后台一篇真实文章里借一组合法 channel ID 当占位（结果缓存），
     草稿创建出来后由前端覆盖真正的 channels。
+    详细过程会写到 logger（如果传了），方便排查失败原因。
     """
+    log = logger or (lambda _msg: None)
+
     global _CACHED_VALID_EN_CHANNELS
     if _CACHED_VALID_EN_CHANNELS:
+        log(f"[channels] 使用上一次缓存: {_CACHED_VALID_EN_CHANNELS}")
         return _CACHED_VALID_EN_CHANNELS
+
+    # 1) 动态从 EN 后台借合法 channel
     try:
         r = session.get(
             f"{BASE_URL}/newarticle/admin/archives/list",
             params={"language": "en", "status": "1", "per_page": 10, "page": 1},
             timeout=15,
         )
-        archives = (r.json().get("data") or {}).get("archives") or []
+        payload = r.json()
+        archives = (payload.get("data") or {}).get("archives") or []
+        log(f"[channels] 探测 EN 已发布列表，拉到 {len(archives)} 篇文章")
         for archive in archives:
             aid = archive.get("id")
             if not aid:
@@ -277,17 +285,29 @@ def _fetch_valid_en_channel_ids():
                 ids = [str(c.get("value")) for c in channels if c.get("value")]
                 if ids:
                     _CACHED_VALID_EN_CHANNELS = ids[:2]
-                    print(f"[_fetch_valid_en_channel_ids] borrowed from article {aid}: {_CACHED_VALID_EN_CHANNELS}")
+                    log(f"[channels] 从文章 {aid} 借到 channel: {_CACHED_VALID_EN_CHANNELS}")
                     return _CACHED_VALID_EN_CHANNELS
-            except Exception:
+                log(f"[channels] 文章 {aid} 没有 channels，继续下一篇")
+            except Exception as e:
+                log(f"[channels] 文章 {aid} 读取异常: {type(e).__name__}: {e}")
                 continue
     except Exception as e:
-        print(f"[_fetch_valid_en_channel_ids] error: {e}")
+        log(f"[channels] 列表拉取异常: {type(e).__name__}: {e}")
+
+    # 2) 用户配置的兜底 ID
+    env_ch = os.environ.get("AF_EN_FALLBACK_CHANNEL_ID", "").strip()
+    if env_ch:
+        log(f"[channels] 动态查询无结果，使用 AF_EN_FALLBACK_CHANNEL_ID={env_ch}")
+        return [env_ch]
+
+    # 3) 最后兜底
+    log("[channels] 全部失败，fallback 到 264（很可能仍然失败，建议设 AF_EN_FALLBACK_CHANNEL_ID 环境变量为一个已知合法的 EN channel ID）")
     return ["264"]
 
 
-def create_en_draft(zh_article: dict, en_title: str, en_body: str) -> str:
+def create_en_draft(zh_article: dict, en_title: str, en_body: str, logger=None) -> str:
     """在 AF 英文后台创建一篇新的英文草稿，返回新生成的 article_id（字符串）"""
+    log = logger or (lambda _msg: None)
     post_data = {
         "status": "0",  # 0=草稿；发布时由 publish_article 改成 1
         "type": "article",
@@ -314,7 +334,7 @@ def create_en_draft(zh_article: dict, en_title: str, en_body: str) -> str:
     # 后端要求至少有 channels 字段。ZH 和 EN 后台是两套独立的 channel ID 系统
     # （ZH 用 6-7 位 ID，EN 用 3 位 ID，靠 relate_sd_id 做桥接），不能直接搬。
     # 创建阶段从一篇真实 EN 草稿里动态借一个合法 channel ID 当占位，发布前由前端覆盖。
-    channel_ids = _fetch_valid_en_channel_ids()
+    channel_ids = _fetch_valid_en_channel_ids(logger=log)
     for i, ch in enumerate(channel_ids):
         post_data[f"channels[{i}]"] = ch
         post_data[f"channels_level[{ch}]"] = "A"
@@ -331,24 +351,29 @@ def create_en_draft(zh_article: dict, en_title: str, en_body: str) -> str:
     ]
     last_err = None
     for url in candidates:
+        log(f"[create_draft] POST → {url}（携带 channels={channel_ids}）")
         try:
             resp = session.post(url, data=post_data, timeout=60)
             try:
                 j = resp.json()
             except Exception:
                 last_err = f"{url} 返回非 JSON（HTTP {resp.status_code}）"
+                log(f"[create_draft] 失败：{last_err}")
                 continue
             if j.get("errno") not in (0, None):
                 errno_val = j.get("errno")
                 last_err = f"{url}: {j.get('errmsg', f'errno={errno_val}')}"
+                log(f"[create_draft] 失败：{last_err}")
                 continue
             new_id = _extract_new_article_id(j)
             if new_id:
-                print(f"[create_en_draft] success via {url} → new id={new_id}")
+                log(f"[create_draft] 成功，新 ID = {new_id}（端点：{url}）")
                 return str(new_id)
             last_err = f"{url}: 返回 errno=0 但找不到新 ID（{str(j)[:300]}）"
+            log(f"[create_draft] 失败：{last_err}")
         except Exception as e:
             last_err = f"{url}: {type(e).__name__}: {e}"
+            log(f"[create_draft] 异常：{last_err}")
             continue
     raise RuntimeError(f"创建英文草稿失败：{last_err}")
 

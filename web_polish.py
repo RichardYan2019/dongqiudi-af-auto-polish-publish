@@ -91,7 +91,7 @@ def run_polish_from_zh(temp_key: str, zh_id: str, lq: queue.Queue):
         en_body = translate_html_body_to_en(zh_body, API_KEY)
 
         lq.put("在 AF 后台创建英文草稿...")
-        new_en_id = create_en_draft(zh_article, en_title, en_body)
+        new_en_id = create_en_draft(zh_article, en_title, en_body, logger=lambda m: lq.put(m))
         lq.put(f"[NEW_ID] {new_en_id}")
         lq.put(f"新英文文章 ID: {new_en_id}")
 
