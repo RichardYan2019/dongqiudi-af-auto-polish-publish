@@ -273,12 +273,23 @@ def create_en_draft(zh_article: dict, en_title: str, en_body: str) -> str:
         "object_attr_other":   "",
         "event_attr":          "",
     }
-    # 几个可能的创建端点，按概率从高到低尝试
+    # 后端要求至少有 channels 字段。ZH 和 EN 后台是两套独立的 channel ID 系统
+    # （ZH 用 6-7 位 ID，EN 用 3 位 ID，靠 relate_sd_id 做桥接），不能直接搬。
+    # 创建阶段只用一个合法占位 channel（264 = 通用），真实 channel 由 polish 后前端选择。
+    channel_ids = ["264"]
+    for i, ch in enumerate(channel_ids):
+        post_data[f"channels[{i}]"] = ch
+        post_data[f"channels_level[{ch}]"] = "A"
+    # 默认放进 Headline + Football 两个 tab，发布前可在前端修改
+    for i, t in enumerate(["1", "4"]):
+        post_data[f"tabs[{i}]"] = t
+
+    # 几个可能的创建端点，按概率从高到低尝试（/create 已确认是正解，放最前）
     candidates = [
+        f"{BASE_URL}/newarticle/admin/archives/create",
+        f"{BASE_URL}/newarticle/admin/archives/add",
         f"{BASE_URL}/newarticle/admin/archives/edit",
         f"{BASE_URL}/newarticle/admin/archives/edit?id=0",
-        f"{BASE_URL}/newarticle/admin/archives/add",
-        f"{BASE_URL}/newarticle/admin/archives/create",
     ]
     last_err = None
     for url in candidates:
