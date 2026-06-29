@@ -248,6 +248,44 @@ def _extract_new_article_id(payload):
     return None
 
 
+_CACHED_VALID_EN_CHANNELS = None
+
+def _fetch_valid_en_channel_ids():
+    """
+    /create 端点要求 channels 是真实存在的 EN channel ID。
+    ZH/EN channel 系统独立、ID 不通用，无法直接搬。
+    这里从英文后台一篇真实文章里借一组合法 channel ID 当占位（结果缓存），
+    草稿创建出来后由前端覆盖真正的 channels。
+    """
+    global _CACHED_VALID_EN_CHANNELS
+    if _CACHED_VALID_EN_CHANNELS:
+        return _CACHED_VALID_EN_CHANNELS
+    try:
+        r = session.get(
+            f"{BASE_URL}/newarticle/admin/archives/list",
+            params={"language": "en", "status": "1", "per_page": 10, "page": 1},
+            timeout=15,
+        )
+        archives = (r.json().get("data") or {}).get("archives") or []
+        for archive in archives:
+            aid = archive.get("id")
+            if not aid:
+                continue
+            try:
+                detail = get_article_detail(aid)
+                channels = detail.get("original_channels") or []
+                ids = [str(c.get("value")) for c in channels if c.get("value")]
+                if ids:
+                    _CACHED_VALID_EN_CHANNELS = ids[:2]
+                    print(f"[_fetch_valid_en_channel_ids] borrowed from article {aid}: {_CACHED_VALID_EN_CHANNELS}")
+                    return _CACHED_VALID_EN_CHANNELS
+            except Exception:
+                continue
+    except Exception as e:
+        print(f"[_fetch_valid_en_channel_ids] error: {e}")
+    return ["264"]
+
+
 def create_en_draft(zh_article: dict, en_title: str, en_body: str) -> str:
     """在 AF 英文后台创建一篇新的英文草稿，返回新生成的 article_id（字符串）"""
     post_data = {
@@ -275,8 +313,8 @@ def create_en_draft(zh_article: dict, en_title: str, en_body: str) -> str:
     }
     # 后端要求至少有 channels 字段。ZH 和 EN 后台是两套独立的 channel ID 系统
     # （ZH 用 6-7 位 ID，EN 用 3 位 ID，靠 relate_sd_id 做桥接），不能直接搬。
-    # 创建阶段只用一个合法占位 channel（264 = 通用），真实 channel 由 polish 后前端选择。
-    channel_ids = ["264"]
+    # 创建阶段从一篇真实 EN 草稿里动态借一个合法 channel ID 当占位，发布前由前端覆盖。
+    channel_ids = _fetch_valid_en_channel_ids()
     for i, ch in enumerate(channel_ids):
         post_data[f"channels[{i}]"] = ch
         post_data[f"channels_level[{ch}]"] = "A"
