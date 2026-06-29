@@ -290,7 +290,8 @@ def create_en_draft(zh_article: dict, en_title: str, en_body: str) -> str:
                 last_err = f"{url} 返回非 JSON（HTTP {resp.status_code}）"
                 continue
             if j.get("errno") not in (0, None):
-                last_err = f"{url}: {j.get('errmsg', f'errno={j.get(\"errno\")}')}"
+                errno_val = j.get("errno")
+                last_err = f"{url}: {j.get('errmsg', f'errno={errno_val}')}"
                 continue
             new_id = _extract_new_article_id(j)
             if new_id:
