@@ -62,6 +62,30 @@ def fix_title_caps(title: str, api_key: str) -> str:
         return title
 
 
+REFUSAL_MARKERS = (
+    "i'm sorry", "i am sorry", "i cannot", "i can't", "i can not",
+    "as an ai", "i'm not able", "i am unable", "i apologize",
+    "sorry, but", "unable to comply", "against my", "cannot assist",
+    "违反", "无法帮助", "抱歉", "作为ai", "作为一个ai",
+)
+
+
+def _looks_like_refusal_or_truncated(original: str, polished: str) -> str:
+    """Return reason string if polished result is suspicious, else empty string."""
+    if not polished or not polished.strip():
+        return "empty response"
+    p_lower = polished.lower().strip()
+    for marker in REFUSAL_MARKERS:
+        if p_lower.startswith(marker) or (marker in p_lower[:200]):
+            return f"refusal marker: {marker!r}"
+    # Strip HTML tags for a fair length comparison
+    orig_text = re.sub(r"<[^>]+>", "", original).strip()
+    pol_text = re.sub(r"<[^>]+>", "", polished).strip()
+    if len(orig_text) >= 40 and len(pol_text) < len(orig_text) * 0.6:
+        return f"length shrunk {len(orig_text)}->{len(pol_text)} (<60%)"
+    return ""
+
+
 def polish_text(text: str, api_key: str) -> str:
     if not text.strip():
         return text
@@ -69,11 +93,17 @@ def polish_text(text: str, api_key: str) -> str:
         "Polish the following English football news text. "
         "Fix grammar, improve fluency and professionalism. "
         "Keep all facts, names, numbers, and HTML tags/attributes exactly as-is. "
+        "Do not shorten, summarize, or remove any content. "
         "Only output the polished text, nothing else.\n\n" + text
     )
     for attempt in range(2):
         try:
-            return call_gpt(api_key, prompt)
+            result = call_gpt(api_key, prompt)
+            issue = _looks_like_refusal_or_truncated(text, result)
+            if issue:
+                print(f"  [polish 结果异常，保留原文] {issue}; preview={result[:120]!r}")
+                return text
+            return result
         except Exception as e:
             if attempt == 1:
                 print(f"  [polish失败，保留原文] {e}")
@@ -91,6 +121,9 @@ def polish_html_body(html: str, api_key: str) -> str:
             continue
         try:
             polished = polish_text(inner, api_key)
+            # polish_text already keeps original on refusal/truncation, but double-check
+            if _looks_like_refusal_or_truncated(inner, polished):
+                continue
             block.clear()
             for child in list(BeautifulSoup(polished, "html.parser").contents):
                 block.append(child)
