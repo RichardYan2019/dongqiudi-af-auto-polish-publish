@@ -49,15 +49,34 @@ def call_gpt(api_key: str, prompt: str) -> str:
             raise
 
 
+def _looks_like_bad_title(original: str, result: str) -> str:
+    """Return reason string if title result is suspicious, else empty string."""
+    if not result or not result.strip():
+        return "empty title"
+    r_lower = result.lower().strip().strip('"').strip("'")
+    for marker in REFUSAL_MARKERS:
+        if r_lower.startswith(marker) or marker in r_lower[:120]:
+            return f"refusal marker: {marker!r}"
+    if len(original) >= 20 and len(result.strip()) < len(original) * 0.5:
+        return f"length shrunk {len(original)}->{len(result.strip())} (<50%)"
+    return ""
+
+
 def fix_title_caps(title: str, api_key: str) -> str:
     try:
-        return call_gpt(api_key, (
+        result = call_gpt(api_key, (
             "Fix this football headline. Rules:\n"
             "1. Capitalize proper nouns only: player names, manager names, club names, referee names, chairman/owner names, place names, competition names.\n"
             "2. Do NOT capitalize every word — follow standard English sentence-style capitalization for all other words.\n"
             "3. Do not change any words, only fix capitalization.\n"
+            "4. Never shorten, summarize, or remove any words. Preserve the full headline.\n"
             "Return only the corrected headline.\n\n" + title
         ))
+        issue = _looks_like_bad_title(title, result)
+        if issue:
+            print(f"  [fix_title_caps 结果异常，保留原标题] {issue}; preview={result[:120]!r}")
+            return title
+        return result
     except Exception:
         return title
 
@@ -590,7 +609,14 @@ if __name__ == "__main__":
     print(f"原 tabs: {article['original_tabs']}")
 
     print("\n=== Polish 标题 ===")
-    article["title"] = polish_text(article["title"], api_key)
+    _orig_title = article["title"]
+    _polished_title = polish_text(_orig_title, api_key)
+    _issue = _looks_like_bad_title(_orig_title, _polished_title)
+    if _issue:
+        print(f"  [polish 标题异常，保留原标题] {_issue}; preview={_polished_title[:120]!r}")
+        article["title"] = _orig_title
+    else:
+        article["title"] = _polished_title
     print(f"→ {article['title']}")
 
     print("\n=== Polish 正文 ===")
