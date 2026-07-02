@@ -54,11 +54,12 @@ def _looks_like_bad_title(original: str, result: str) -> str:
     if not result or not result.strip():
         return "empty title"
     r_lower = result.lower().strip().strip('"').strip("'")
+    # Titles should never START with a refusal — check only prefix
     for marker in REFUSAL_MARKERS:
-        if r_lower.startswith(marker) or marker in r_lower[:120]:
+        if r_lower.startswith(marker):
             return f"refusal marker: {marker!r}"
-    if len(original) >= 20 and len(result.strip()) < len(original) * 0.5:
-        return f"length shrunk {len(original)}->{len(result.strip())} (<50%)"
+    if len(original) >= 20 and len(result.strip()) < len(original) * 0.4:
+        return f"length shrunk {len(original)}->{len(result.strip())} (<40%)"
     return ""
 
 
@@ -82,10 +83,14 @@ def fix_title_caps(title: str, api_key: str) -> str:
 
 
 REFUSAL_MARKERS = (
-    "i'm sorry", "i am sorry", "i cannot", "i can't", "i can not",
-    "as an ai", "i'm not able", "i am unable", "i apologize",
-    "sorry, but", "unable to comply", "against my", "cannot assist",
-    "违反", "无法帮助", "抱歉", "作为ai", "作为一个ai",
+    "i'm sorry, i cannot", "i am sorry, i cannot",
+    "i'm sorry, but i cannot", "i am sorry, but i cannot",
+    "i cannot help", "i can't help",
+    "i'm not able to", "i am unable to",
+    "i cannot assist with", "i can't assist with",
+    "as an ai language model", "as an ai, i",
+    "i apologize, but i", "i'm afraid i cannot",
+    "违反", "无法帮助", "作为ai", "作为一个ai",
 )
 
 
@@ -93,15 +98,17 @@ def _looks_like_refusal_or_truncated(original: str, polished: str) -> str:
     """Return reason string if polished result is suspicious, else empty string."""
     if not polished or not polished.strip():
         return "empty response"
-    p_lower = polished.lower().strip()
+    p_lower = polished.lower().strip().strip('"').strip("'")
+    # Only check the very beginning of the response for refusal patterns
     for marker in REFUSAL_MARKERS:
-        if p_lower.startswith(marker) or (marker in p_lower[:200]):
+        if p_lower.startswith(marker):
             return f"refusal marker: {marker!r}"
     # Strip HTML tags for a fair length comparison
     orig_text = re.sub(r"<[^>]+>", "", original).strip()
     pol_text = re.sub(r"<[^>]+>", "", polished).strip()
-    if len(orig_text) >= 40 and len(pol_text) < len(orig_text) * 0.6:
-        return f"length shrunk {len(orig_text)}->{len(pol_text)} (<60%)"
+    # Only guard when original is substantial; use 40% threshold (very short = clearly truncated)
+    if len(orig_text) >= 80 and len(pol_text) < len(orig_text) * 0.4:
+        return f"length shrunk {len(orig_text)}->{len(pol_text)} (<40%)"
     return ""
 
 
@@ -484,11 +491,21 @@ def apply_english_rules(article: dict, api_key: str) -> dict:
     body  = normalize_standard_names(body)
     if len(title) > 100:
         try:
-            title = call_gpt(api_key, (
-                f"This football headline is too long ({len(title)} chars). "
+            _orig_long = title
+            new_title = call_gpt(api_key, (
+                f"This football headline is too long ({len(_orig_long)} chars). "
                 "Rewrite or condense it to under 100 characters. "
-                "Keep the core meaning. Return only the new headline, nothing else.\n\n" + title
+                "Keep every fact, name, number, and the full core meaning intact — "
+                "do not drop the subject, the action, or the object. "
+                "Never return an empty string, a refusal, or a fragment shorter than 40% of the original. "
+                "Return only the new headline, nothing else.\n\n" + _orig_long
             ))
+            issue = _looks_like_bad_title(_orig_long, new_title)
+            if issue:
+                print(f"  [长标题改写异常，保留原标题] {issue}; preview={new_title[:120]!r}")
+                title = _orig_long
+            else:
+                title = new_title
             if len(title) > 100:
                 raise ValueError(f"API 改写后仍超过100字符（{len(title)}字）：{title}")
         except Exception as e:
