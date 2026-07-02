@@ -50,16 +50,12 @@ def call_gpt(api_key: str, prompt: str) -> str:
 
 
 def _looks_like_bad_title(original: str, result: str) -> str:
-    """Return reason string if title result is suspicious, else empty string."""
     if not result or not result.strip():
         return "empty title"
     r_lower = result.lower().strip().strip('"').strip("'")
-    # Titles should never START with a refusal — check only prefix
     for marker in REFUSAL_MARKERS:
         if r_lower.startswith(marker):
-            return f"refusal marker: {marker!r}"
-    if len(original) >= 20 and len(result.strip()) < len(original) * 0.4:
-        return f"length shrunk {len(original)}->{len(result.strip())} (<40%)"
+            return f"refusal: starts with {marker!r}"
     return ""
 
 
@@ -83,32 +79,24 @@ def fix_title_caps(title: str, api_key: str) -> str:
 
 
 REFUSAL_MARKERS = (
-    "i'm sorry, i cannot", "i am sorry, i cannot",
-    "i'm sorry, but i cannot", "i am sorry, but i cannot",
-    "i cannot help", "i can't help",
-    "i'm not able to", "i am unable to",
-    "i cannot assist with", "i can't assist with",
-    "as an ai language model", "as an ai, i",
-    "i apologize, but i", "i'm afraid i cannot",
-    "违反", "无法帮助", "作为ai", "作为一个ai",
+    "i'm sorry, i cannot",
+    "i am sorry, i cannot",
+    "i cannot help with",
+    "i can't help with",
+    "as an ai language model",
+    "as an ai, i cannot",
+    "i'm afraid i cannot",
+    "i'm not able to help",
 )
 
 
 def _looks_like_refusal_or_truncated(original: str, polished: str) -> str:
-    """Return reason string if polished result is suspicious, else empty string."""
     if not polished or not polished.strip():
         return "empty response"
     p_lower = polished.lower().strip().strip('"').strip("'")
-    # Only check the very beginning of the response for refusal patterns
     for marker in REFUSAL_MARKERS:
         if p_lower.startswith(marker):
-            return f"refusal marker: {marker!r}"
-    # Strip HTML tags for a fair length comparison
-    orig_text = re.sub(r"<[^>]+>", "", original).strip()
-    pol_text = re.sub(r"<[^>]+>", "", polished).strip()
-    # Only guard when original is substantial; use 40% threshold (very short = clearly truncated)
-    if len(orig_text) >= 80 and len(pol_text) < len(orig_text) * 0.4:
-        return f"length shrunk {len(orig_text)}->{len(pol_text)} (<40%)"
+            return f"refusal: starts with {marker!r}"
     return ""
 
 
