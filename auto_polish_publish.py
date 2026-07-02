@@ -49,55 +49,17 @@ def call_gpt(api_key: str, prompt: str) -> str:
             raise
 
 
-def _looks_like_bad_title(original: str, result: str) -> str:
-    if not result or not result.strip():
-        return "empty title"
-    r_lower = result.lower().strip().strip('"').strip("'")
-    for marker in REFUSAL_MARKERS:
-        if r_lower.startswith(marker):
-            return f"refusal: starts with {marker!r}"
-    return ""
-
-
 def fix_title_caps(title: str, api_key: str) -> str:
     try:
-        result = call_gpt(api_key, (
+        return call_gpt(api_key, (
             "Fix this football headline. Rules:\n"
             "1. Capitalize proper nouns only: player names, manager names, club names, referee names, chairman/owner names, place names, competition names.\n"
             "2. Do NOT capitalize every word — follow standard English sentence-style capitalization for all other words.\n"
             "3. Do not change any words, only fix capitalization.\n"
-            "4. Never shorten, summarize, or remove any words. Preserve the full headline.\n"
             "Return only the corrected headline.\n\n" + title
         ))
-        issue = _looks_like_bad_title(title, result)
-        if issue:
-            print(f"  [fix_title_caps 结果异常，保留原标题] {issue}; preview={result[:120]!r}")
-            return title
-        return result
     except Exception:
         return title
-
-
-REFUSAL_MARKERS = (
-    "i'm sorry, i cannot",
-    "i am sorry, i cannot",
-    "i cannot help with",
-    "i can't help with",
-    "as an ai language model",
-    "as an ai, i cannot",
-    "i'm afraid i cannot",
-    "i'm not able to help",
-)
-
-
-def _looks_like_refusal_or_truncated(original: str, polished: str) -> str:
-    if not polished or not polished.strip():
-        return "empty response"
-    p_lower = polished.lower().strip().strip('"').strip("'")
-    for marker in REFUSAL_MARKERS:
-        if p_lower.startswith(marker):
-            return f"refusal: starts with {marker!r}"
-    return ""
 
 
 def polish_text(text: str, api_key: str) -> str:
@@ -107,17 +69,11 @@ def polish_text(text: str, api_key: str) -> str:
         "Polish the following English football news text. "
         "Fix grammar, improve fluency and professionalism. "
         "Keep all facts, names, numbers, and HTML tags/attributes exactly as-is. "
-        "Do not shorten, summarize, or remove any content. "
         "Only output the polished text, nothing else.\n\n" + text
     )
     for attempt in range(2):
         try:
-            result = call_gpt(api_key, prompt)
-            issue = _looks_like_refusal_or_truncated(text, result)
-            if issue:
-                print(f"  [polish 结果异常，保留原文] {issue}; preview={result[:120]!r}")
-                return text
-            return result
+            return call_gpt(api_key, prompt)
         except Exception as e:
             if attempt == 1:
                 print(f"  [polish失败，保留原文] {e}")
@@ -135,9 +91,6 @@ def polish_html_body(html: str, api_key: str) -> str:
             continue
         try:
             polished = polish_text(inner, api_key)
-            # polish_text already keeps original on refusal/truncation, but double-check
-            if _looks_like_refusal_or_truncated(inner, polished):
-                continue
             block.clear()
             for child in list(BeautifulSoup(polished, "html.parser").contents):
                 block.append(child)
@@ -479,21 +432,11 @@ def apply_english_rules(article: dict, api_key: str) -> dict:
     body  = normalize_standard_names(body)
     if len(title) > 100:
         try:
-            _orig_long = title
-            new_title = call_gpt(api_key, (
-                f"This football headline is too long ({len(_orig_long)} chars). "
+            title = call_gpt(api_key, (
+                f"This football headline is too long ({len(title)} chars). "
                 "Rewrite or condense it to under 100 characters. "
-                "Keep every fact, name, number, and the full core meaning intact — "
-                "do not drop the subject, the action, or the object. "
-                "Never return an empty string, a refusal, or a fragment shorter than 40% of the original. "
-                "Return only the new headline, nothing else.\n\n" + _orig_long
+                "Keep the core meaning. Return only the new headline, nothing else.\n\n" + title
             ))
-            issue = _looks_like_bad_title(_orig_long, new_title)
-            if issue:
-                print(f"  [长标题改写异常，保留原标题] {issue}; preview={new_title[:120]!r}")
-                title = _orig_long
-            else:
-                title = new_title
             if len(title) > 100:
                 raise ValueError(f"API 改写后仍超过100字符（{len(title)}字）：{title}")
         except Exception as e:
@@ -614,14 +557,7 @@ if __name__ == "__main__":
     print(f"原 tabs: {article['original_tabs']}")
 
     print("\n=== Polish 标题 ===")
-    _orig_title = article["title"]
-    _polished_title = polish_text(_orig_title, api_key)
-    _issue = _looks_like_bad_title(_orig_title, _polished_title)
-    if _issue:
-        print(f"  [polish 标题异常，保留原标题] {_issue}; preview={_polished_title[:120]!r}")
-        article["title"] = _orig_title
-    else:
-        article["title"] = _polished_title
+    article["title"] = polish_text(article["title"], api_key)
     print(f"→ {article['title']}")
 
     print("\n=== Polish 正文 ===")
